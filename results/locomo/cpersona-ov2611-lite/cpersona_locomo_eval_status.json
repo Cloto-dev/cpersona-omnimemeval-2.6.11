@@ -1,0 +1,9 @@
+{
+  "stage": "eval",
+  "skip_failed_judge": false,
+  "status_counts": {
+    "success": 1540
+  },
+  "failed_groups": [],
+  "skipped_records": []
+}

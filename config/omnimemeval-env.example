@@ -1,0 +1,12 @@
+# The harness env file the runs used (OMNIMEMEVAL_ENV_FILE), with credentials and the local port removed.
+CPERSONA_MCP_URL="http://127.0.0.1:<port>/mcp"
+CPERSONA_AUTH_TOKEN="<the server's bearer token>"
+TOPK=20
+LLM_WORKERS=10
+ANSWER_MODEL="gpt-4.1-mini"
+ANSWER_BASE_URL="https://api.openai.com/v1"
+ANSWER_API_KEY="<your key>"
+EVAL_MODEL="gpt-4o-mini"
+EVAL_BASE_URL="https://api.openai.com/v1"
+EVAL_API_KEY="<your key>"
+# Set per run, not in the file: CPERSONA_SEARCH_MODE=pro or lite (search stage only).

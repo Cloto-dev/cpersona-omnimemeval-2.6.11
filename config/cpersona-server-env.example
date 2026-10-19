@@ -1,0 +1,16 @@
+# The CPersona 2.6.11 server's environment for the runs (start it with: python -m cpersona.server).
+# Every setting not listed here was at its default.
+TZ=UTC
+CPERSONA_TRANSPORT=streamable-http
+CPERSONA_HTTP_HOST=127.0.0.1
+CPERSONA_HTTP_PORT=<port>
+CPERSONA_AUTH_TOKEN=<a bearer token>
+CPERSONA_DB_PATH=<a new, empty database file>
+CPERSONA_EMBEDDING_MODE=http
+CPERSONA_EMBEDDING_URL=http://127.0.0.1:<embedding port>/embed
+CPERSONA_EMBEDDING_MODEL=bge-m3
+CPERSONA_MAX_CONTENT_LENGTH=80000
+# These three are the defaults, set explicitly in the runs:
+CPERSONA_VECTOR_SEARCH_MODE=local
+CPERSONA_STORE_BLOB=true
+CPERSONA_FTS_ENABLED=true
