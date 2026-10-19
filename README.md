@@ -9,14 +9,18 @@ recomputes every published number from them.
 | --- | ---: | --- | ---: | ---: |
 | LongMemEval-S (cleaned) | 500 | pro | 89.60 | 4,262.5 |
 | LongMemEval-S (cleaned) | 500 | lite | 82.20 | 993.3 |
-| LoCoMo (categories 1–4) | 1,540 | pro | 84.03 | 4,441.0 |
-| LoCoMo (categories 1–4) | 1,540 | lite | 68.18 | 1,485.0 |
+| LoCoMo, non-adversarial subset (categories 1–4) | 1,540 | pro | 84.03 | 4,441.0 |
+| LoCoMo, non-adversarial subset (categories 1–4) | 1,540 | lite | 68.18 | 1,485.0 |
 
-The two modes are `reconstruct`'s two response sizes. `pro` returns up to 15 items within
-5,000 tokens of response JSON and holds two more places for block retrieval; `lite`
-returns the default 10 items within 3,000 tokens. Both hold one place for a keyword
-match. The runs of the two modes differ only in that setting, so a difference between
-them is the mode's whole effect, not that of the token cap alone.
+The two modes are `reconstruct`'s two response sizes:
+
+- `pro`: a 15-item window plus up to 5 reserved places (block retrieval and one
+  keyword match), no character budget, the response JSON capped at 5,000 tokens.
+- `lite`: a 10-item window plus up to 3 reserved places, quotes limited to 2,800
+  characters (the limit that binds), the response JSON capped at 3,000 tokens.
+
+The runs of the two modes differ only in the mode, so a difference between them is
+the mode's whole effect, not that of a token cap alone.
 
 By category:
 
@@ -30,39 +34,67 @@ By category:
 | CPersona 2.6.11 (pro) | 88.70 | 78.01 | 83.18 | 63.54 |
 | CPersona 2.6.11 (lite) | 73.84 | 51.06 | 72.59 | 54.17 |
 
+## Development on these questions
+
+CPersona's response modes were developed on LongMemEval-S itself. 100 of the 500
+questions are a development set
+([`data/longmemeval-s-dev-questions.json`](data/longmemeval-s-dev-questions.json),
+seed 20261003): the shape of `pro` was chosen there by judged accuracy, and the lite
+budget was measured there. The other 400 served the registered checks of earlier
+releases and some exploration; in all, the project judged 32 runs of all or part of
+the 500 questions between 2026-10-03 and 2026-10-13. LoCoMo's questions were
+searched once before, on 2026-10-13, with no answers or judging. Accuracy by set,
+from the records here:
+
+| Mode | 100 development questions | 400 other questions | All 500 |
+| --- | ---: | ---: | ---: |
+| pro | 93.00 | 88.75 | 89.60 |
+| lite | 87.00 | 81.00 | 82.20 |
+
 ## The runs
 
 - **Who and when**: run by the CPersona project (Cloto-dev), 2026-10-19, one run each.
 - **Backend**: CPersona 2.6.11 (git tag `v2.6.11`, also on PyPI), self-hosted on one
-  machine. CPersona calls no generative model to store or recall, so OmniMemEval's
-  "memory service model" setting does not apply.
-- **Stores**: each benchmark was ingested once into a new, empty database file. For
-  LongMemEval-S both modes searched that store. For LoCoMo each mode searched its own
+  machine (Apple silicon, macOS), on Python 3.11.15 with mcp 1.30.0, numpy 2.4.6,
+  httpx 0.28.1, uvicorn 0.49.0 and SQLite 3.50.4. CPersona calls no generative model
+  to store or recall, so OmniMemEval's "memory service model" setting does not apply.
+- **Stores**: each benchmark's store comes from a single ingestion into a new, empty
+  database file (for LongMemEval-S, the second attempt; see below). Both
+  LongMemEval-S modes searched that store. For LoCoMo each mode searched its own
   copy of it, made before any search.
 - **Server settings**: streamable HTTP on loopback; `CPERSONA_MAX_CONTENT_LENGTH=80000`
   (default 16,000) so that no session is cut when it is stored; every other setting at
-  its default.
+  its default ([`config/cpersona-server-env.example`](config/cpersona-server-env.example)).
 - **Embeddings**: `BAAI/bge-m3` (revision `5617a9f61b028005a4858fdac845db406aefb181`)
-  through sentence-transformers 5.6.0 (transformers 5.12.1, torch 2.12.1), normalized,
-  512-token window, served over HTTP by a local process.
+  through sentence-transformers 5.6.0 (transformers 5.12.1, torch 2.12.1, Python
+  3.11.15) on the Apple GPU (`mps`), batch size 32, `max_seq_length` 512, normalized,
+  served over HTTP by a local process. That process keeps a disk cache of the vectors
+  it has computed with these settings, keyed by the text's SHA-256, and computes only
+  texts it has not seen.
 - **Harness**: OmniMemEval at commit `0b1ea8d` on Python 3.12.13 (mcp 2.2.0, openai 3.23.0,
   tiktoken 0.14.0, httpx 0.28.1). Later commits up to `c3b60c7`, the current `main`, do
   not change the pipeline: under `scripts/` they change only comments, tests and a
   documentation-link checker. The run used
-  [`omnimemeval-0b1ea8d-2_6_11.patch`](https://github.com/Cloto-dev/cpersona/blob/master/benchmarks/omnimemeval/omnimemeval-0b1ea8d-2_6_11.patch)
+  [`omnimemeval-0b1ea8d-2_6_11.patch`](https://github.com/Cloto-dev/cpersona/blob/de079043ba760be7080e18947fb5b45c8bcb5785/benchmarks/omnimemeval/omnimemeval-0b1ea8d-2_6_11.patch)
   applied and the client
-  [`cpersona_client.py`](https://github.com/Cloto-dev/cpersona/blob/master/benchmarks/omnimemeval/cpersona_client.py)
-  added under `scripts/client_factory/`. The patch registers the client. For LoCoMo it
-  stores each session once, as the harness's speaker-A view (which carries both
-  speakers' turns), in one store per conversation, and searches that store with the
-  harness's `shared_conv_search`, as for EverOS and Supermemory. The client calls
-  CPersona's `reconstruct` with the mode named by `CPERSONA_SEARCH_MODE` (`pro` or
-  `lite`) and that mode's default count; the harness's `top_k` (`TOPK=20` in the env
-  file) is not passed.
+  [`cpersona_client.py`](https://github.com/Cloto-dev/cpersona/blob/de079043ba760be7080e18947fb5b45c8bcb5785/benchmarks/omnimemeval/cpersona_client.py)
+  added under `scripts/client_factory/`. The patch registers the client, passes the
+  session key on LongMemEval-S ingestion, and searches LongMemEval-S with the
+  harness's generic text search. For LoCoMo it stores each session once, as the
+  harness's speaker-A view (which carries both speakers' turns), in one store per
+  conversation, and searches that store with the harness's `shared_conv_search`, as
+  for EverOS and Supermemory. The checkout the runs used differs from the patch only
+  by entries for two other clients used in this project's other measurements (a
+  second name for the same CPersona client, and OpenViking's), which `--lib cpersona`
+  does not reach; its CPersona client is byte-identical to the published one. The
+  client calls CPersona's `reconstruct` with the mode named by `CPERSONA_SEARCH_MODE`
+  (`pro` or `lite`) and that mode's default count; the harness's `top_k` (`TOPK=20` in
+  the env file) is not passed.
 - **Models**: answers by `gpt-4.1-mini`, recorded as `gpt-4.1-mini-2025-04-14` in
   `token_usage_answer.json`; one judge run by `gpt-4o-mini`. The harness does not record
   the judge's resolved snapshot; one API call on 2026-10-19 showed that alias resolving
-  to `gpt-4o-mini-2024-07-18`. The harness's own prompts and metric.
+  to `gpt-4o-mini-2024-07-18` ([`evidence/judge-alias-probe.json`](evidence/judge-alias-probe.json)).
+  The harness's own prompts and metric.
 - **Data**: LongMemEval-S cleaned, `longmemeval_s_cleaned.json`, sha256
   `d6f21ea9d60a0d56f34a05b609c79c88a451d2ae03597821ea3d5a9678c3a442`, all 500 questions.
   LoCoMo `locomo10.json`, sha256
@@ -73,31 +105,43 @@ By category:
   judged: each item's recorded status is `success` at the search, answer and eval
   stages. The harness has no separate timeout status, and no item failed or was
   skipped. The ingestion stored all 23,867 LongMemEval-S sessions and all 272 LoCoMo
-  sessions (`ingest/success_records.txt`). A discarded first ingestion is described
-  below. Overall is correct answers over all questions (500 and 1,540).
+  sessions (`ingest/success_records.txt`). Overall is correct answers over all
+  questions (500 and 1,540).
 - **Context Tokens**: the answer model's reported prompt tokens over its calls, answer
   prompt included, none estimated: LongMemEval-S 2,131,237 (pro) and 496,670 (lite) over
   500 calls; LoCoMo 6,839,071 (pro) and 2,286,974 (lite) over 1,540 calls. The
-  `context_tokens` field inside `*_grades.json` is a different count (the retrieved
-  context alone, in `cl100k_base`) and is not the table's figure.
+  `context_tokens` field inside `*_grades.json` is a different count: the search
+  context alone, in `cl100k_base`. For LoCoMo that context is the harness's
+  two-speaker template, in which `shared_conv_search` repeats the same retrieved text
+  under both speakers, so the field is about twice the retrieved text.
 
 ### Commands
 
 From the patched OmniMemEval checkout, with a CPersona 2.6.11 server running
 ([`config/cpersona-server-env.example`](config/cpersona-server-env.example)) and the
 harness's env file ([`config/omnimemeval-env.example`](config/omnimemeval-env.example)).
-`<mode>` is `pro` or `lite`:
+`<mode>` is `pro` or `lite`. The two helper scripts in [`scripts/`](scripts/) import
+the harness's CPersona client, so copy them into a folder directly under the checkout
+(`<checkout>/cpersona-run/` below) and run them with the harness's Python.
 
 ```bash
 # LongMemEval-S (ingestion once; search, answer, judge and metric once per mode)
 scripts/longmemeval/lme_ingestion.py --lib cpersona --version lme2611 --workers 2
+cpersona-run/wait_built.py <env file>        # until every queued node and block is built
+# stop the server; copy calibration/longmemeval-s-store.calibration.json to
+# <database file>.calibration.json; start it again and check that its log line
+# "startup calibration" says 'action': 'restored'
 CPERSONA_SEARCH_MODE=<mode> scripts/longmemeval/lme_search.py --lib cpersona --version lme2611 --workers 2
 scripts/longmemeval/lme_responses.py --lib cpersona --version lme2611 --llm-workers 3
 scripts/longmemeval/lme_eval.py --lib cpersona --version lme2611 --num_runs 1 --llm-workers 5
 scripts/longmemeval/lme_metric.py --lib cpersona --version lme2611
 
-# LoCoMo (ingestion once; the store copied for each mode before searching)
+# LoCoMo (ingestion and calibration once; the store copied for each mode before searching)
 scripts/locomo/locomo_ingestion.py --lib cpersona --version ov2611 --workers 2
+cpersona-run/wait_built.py <env file>
+cpersona-run/calib_agents.py <env file> locomo_exp_user_{0..9}_speaker_a_ov2611
+# stop the server; for each mode, copy the database file (with its -wal file, if
+# any) and <database file>.calibration.json; start a server on that mode's copy
 CPERSONA_SEARCH_MODE=<mode> scripts/locomo/locomo_search.py --lib cpersona --version ov2611 --workers 1
 scripts/locomo/locomo_responses.py --lib cpersona --version ov2611
 scripts/locomo/locomo_eval.py --lib cpersona --version ov2611 --num_runs 1
@@ -106,13 +150,18 @@ scripts/locomo/locomo_metric.py --lib cpersona --version ov2611
 
 Each command runs under `OMNIMEMEVAL_ENV_FILE=<env file>` with the harness's Python.
 The harness names its output folder `cpersona-<version>`; the folders here add the mode.
+The docstring of `calib_agents.py` says the server recalibrates at startup only when a
+store has no calibration file; on the LoCoMo stores it also does so when one is
+present (item 2 below).
 
 ### What differs from a clean run
 
 1. **Calibration (LongMemEval-S)**: CPersona calibrates a similarity threshold, per user
-   or for the whole store. Calibrating each of the 500 users costs about 200 recalls per
-   user, so both modes reused the calibration file of an earlier LongMemEval-S store
-   built by this project from the same data and embedding model
+   or for the whole store. Calibrating each user costs about 200 recalls: a per-user
+   calibration started on this store had not finished its first user after 630
+   seconds and was stopped, and an earlier measurement on the same data took 29 to 36
+   minutes a user. So both modes reused the calibration file of an earlier
+   LongMemEval-S store built by this project from the same data and embedding model
    ([`calibration/longmemeval-s-store.calibration.json`](calibration/longmemeval-s-store.calibration.json)):
    a store-wide similarity threshold of 0.3628, and no per-user entry naming any of these
    users. The server restored that file at startup in both modes rather than
@@ -121,19 +170,20 @@ The harness names its output folder `cpersona-<version>`; the folders here add t
    was copied for the two modes. On these small stores (19 to 32 records a user) the
    recall gate cannot be calibrated, so at every start the server recalibrates the whole
    store again while it serves, and the original searches ran beside that. A later
-   rerun that waited for the startup calibration to finish returned the same context for
-   every one of the 1,540 questions in both modes: every user's threshold came out the
-   same in every calibration, and the gate stayed at its default (only the store-wide
-   threshold differed, and the contexts did not change with it). So the contexts in these records
-   are the ones a search gives once the startup calibration has finished. The answers
-   and judgments were not run again.
+   rerun that waited for the startup calibration to finish returned the same context
+   for every one of the 1,540 questions in both modes
+   ([`results/locomo/rerun-search/`](results/locomo/rerun-search/)): every user's
+   threshold came out the same in every calibration, and the gate stayed at its
+   default (only the store-wide threshold differed, and the contexts did not change
+   with it). So the contexts in these records are the ones a search gives once the
+   startup calibration has finished. The answers and judgments were not run again.
 3. **Ingestion (LongMemEval-S)**: a first ingestion with four workers lost 339
    embedding calls to a refused connection on the local embedding server and was
    discarded. The second, with two workers, stored all 23,867 sessions without an
    embedding failure. These records are from the second.
 
 The reasons for all three are on the
-[results page](https://github.com/Cloto-dev/cpersona/blob/master/benchmarks/measurements/results-omnimemeval-2_6_11.md).
+[results page](https://github.com/Cloto-dev/cpersona/blob/de079043ba760be7080e18947fb5b45c8bcb5785/benchmarks/measurements/results-omnimemeval-2_6_11.md).
 
 ## Files
 
@@ -149,30 +199,45 @@ results/locomo/cpersona-ov2611-lite/
   *_status.json                        stage status counts
   token_usage_answer.json              answer-model prompt tokens and call count
   ingest/success_records.txt           the sessions the harness recorded as stored
+results/locomo/rerun-search/<mode>/    the LoCoMo search rerun (item 2 above)
 calibration/                           the calibration file the LongMemEval-S runs reused
 config/                                the server's and the harness's settings, credentials removed
+data/                                  the 100 LongMemEval-S development questions
+evidence/                              the judge alias check
+scripts/                               the two helper scripts the commands use
 verify/recompute.py                    recomputes the numbers above from these files
 ```
 
 ## Verify
 
 ```bash
-python verify/recompute.py
+python verify/recompute.py                   # the records alone
+python verify/recompute.py --data <folder>   # also against the datasets
 ```
 
 For each of the four runs it checks that the records hold 500 or 1,540 judged answers
 with no failed or skipped stage, recomputes Overall and each category from the
-per-question verdicts and compares both with the harness's grades file, recomputes
-Context Tokens from the token totals, and counts the stored sessions. It also checks
-the calibration file's SHA-256. Standard library only. To replay the answer and judge
-steps, decompress a `*_search_results.json.gz` into OmniMemEval's `results/` layout and
-run the responses, eval and metric commands above with your own API key.
+per-question verdicts and compares both with the harness's grades file and with the
+figures published above, recomputes Context Tokens from the token totals, and counts
+the stored sessions. It also recomputes the development split, checks that the LoCoMo
+rerun returned the same context as the published search for every question, and
+checks the calibration file's SHA-256. With `--data`, pointing at a folder holding
+`longmemeval_s_cleaned.json` and `locomo10.json`, it checks both files' SHA-256 and
+that every record's question, reference answer and category match the dataset. A
+failed check exits with status 1, also under `python -O`. Standard library only.
+
+To replay the answer and judge steps, decompress a `*_search_results.json.gz` into
+OmniMemEval's `results/` layout and run the responses, eval and metric commands above
+with your own API key.
 
 ## Licenses
 
-- `verify/` and this README: MIT.
-- `results/lme/`: derived from [LongMemEval](https://github.com/xiaowu0162/LongMemEval)
+- `verify/`, `scripts/`, `config/`, `calibration/`, `evidence/` and this README: MIT.
+- `results/lme/` and `data/`: derived from [LongMemEval](https://github.com/xiaowu0162/LongMemEval)
   (Wu et al., 2024), MIT.
 - `results/locomo/`: derived from [LoCoMo](https://github.com/snap-research/locomo)
-  (Maharana et al., 2024), CC BY-NC 4.0. Use must be non-commercial and credit the
-  LoCoMo authors.
+  (Maharana et al., 2024), [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/).
+  Use must be non-commercial and credit the LoCoMo authors.
+
+The files under `results/` hold excerpts of the datasets' conversations, reformatted
+by the harness and by CPersona's responses, beside the questions and reference answers.

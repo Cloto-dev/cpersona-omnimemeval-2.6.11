@@ -1,0 +1,6 @@
+{
+ "requested_model": "gpt-4o-mini",
+ "response_model": "gpt-4o-mini-2024-07-18",
+ "response_created_utc": "2026-10-19T13:50:56+00:00",
+ "note": "One chat-completion call with the judge alias the runs used; the response names the snapshot it resolved to. The request carried no data from the runs."
+}
